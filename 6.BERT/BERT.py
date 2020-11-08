@@ -12,26 +12,28 @@ import torch.optim as optim
 # sample IsNext and NotNext to be same in small batch size
 def make_batch():
     batch = []
+    # positive 表示一个batch里的两句话是否相邻，若相邻，positive就+1
     positive = negative = 0
     while positive != batch_size / 2 or negative != batch_size / 2:
         tokens_a_index, tokens_b_index = randrange(len(sentences)), randrange(
             len(sentences))  # sample random index in sentences
         tokens_a, tokens_b = token_list[tokens_a_index], token_list[tokens_b_index]
         input_ids = [word_dict['[CLS]']] + tokens_a + [word_dict['[SEP]']] + tokens_b + [word_dict['[SEP]']]
+        # 第一句话的segment全标为0，第二句话的segment全标为1
         segment_ids = [0] * (1 + len(tokens_a) + 1) + [1] * (len(tokens_b) + 1)
 
         # MASK LM
         n_pred = min(max_pred, max(1, int(round(len(input_ids) * 0.15))))  # 15 % of tokens in one sentence
         cand_maked_pos = [i for i, token in enumerate(input_ids)
-                          if token != word_dict['[CLS]'] and token != word_dict['[SEP]']]
-        shuffle(cand_maked_pos)
+                          if token != word_dict['[CLS]'] and token != word_dict['[SEP]']]  # CLS和SEP不需要被mask，因为没有意义
+        shuffle(cand_maked_pos)  # 打乱顺序
         masked_tokens, masked_pos = [], []
-        for pos in cand_maked_pos[:n_pred]:
+        for pos in cand_maked_pos[:n_pred]:  # 取前n_pred个token,去做mask
             masked_pos.append(pos)
             masked_tokens.append(input_ids[pos])
             if random() < 0.8:  # 80%
-                input_ids[pos] = word_dict['[MASK]']  # make mask
-            elif random() < 0.5:  # 10%
+                input_ids[pos] = word_dict['[MASK]']  # 有80%的概率被 mask
+            elif random() < 0.5:  # 10%的概率被替换成其他词，CLS SEP PAD MASK除外
                 index = randint(0, vocab_size - 1)  # random index in vocabulary
                 input_ids[pos] = word_dict[number_dict[index]]  # replace
 
@@ -195,14 +197,14 @@ if __name__ == '__main__':
     maxlen = 30  # maximum of length
     batch_size = 6
     max_pred = 5  # max tokens of prediction
-    n_layers = 6  # number of Encoder of Encoder Layer
+    n_layers = 6  # Encoder Layer有多少层
     n_heads = 12  # number of heads in Multi-Head Attention
-    d_model = 768  # Embedding Size
-    d_ff = 768 * 4  # 4*d_model, FeedForward dimension
+    d_model = 768  # BERT里三个Embedding的维度都设定为768
+    d_ff = 768 * 4  # 4*d_model, FeedForward dimension，即维度提升
     d_k = d_v = 64  # dimension of K(=Q), V
-    n_segments = 2
+    n_segments = 2  # 一个batch力有多少句话
 
-    text = (
+    text = (  # 6轮对话
         'Hello, how are you? I am Romeo.\n'
         'Hello, Romeo My name is Juliet. Nice to meet you.\n'
         'Nice meet you too. How are you today?\n'
@@ -210,10 +212,12 @@ if __name__ == '__main__':
         'Oh Congratulations, Juliet\n'
         'Thanks you Romeo'
     )
+    # 用正则表达式把符号去掉     
     sentences = re.sub("[.,!?\\-]", '', text.lower()).split('\n')  # filter '.', ',', '?', '!'
-    word_list = list(set(" ".join(sentences).split()))
-    word_dict = {'[PAD]': 0, '[CLS]': 1, '[SEP]': 2, '[MASK]': 3}
-    for i, w in enumerate(word_list):
+    word_list = list(set(" ".join(sentences).split()))  # 去重，得到一系列的词，也就是token
+    # 把token映射为索引
+    word_dict = {'[PAD]': 0, '[CLS]': 1, '[SEP]': 2, '[MASK]': 3}  # 特殊词的索引
+    for i, w in enumerate(word_list):  # 把普通词映射为索引
         word_dict[w] = i + 4
     number_dict = {i: w for i, w in enumerate(word_dict)}
     vocab_size = len(word_dict)
@@ -243,7 +247,7 @@ if __name__ == '__main__':
         optimizer.step()
 
     # Predict mask tokens ans isNext
-    input_ids, segment_ids, masked_tokens, masked_pos, isNext = map(torch.LongTensor, zip(batch[0]))
+    input_ids, segment_ids, masked_tokens, masked_pos, isNext = map(torch.LongTensor, zip(batch[0]))  # 可以在这里改成第几个样本
     print(text)
     print([number_dict[w.item()] for w in input_ids[0] if number_dict[w.item()] != '[PAD]'])
 
